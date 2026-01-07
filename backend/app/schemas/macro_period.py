@@ -4,17 +4,13 @@ from typing import Optional, List
 from ..models.macro_period import MacroPeriodStatus, Priority
 from .selection import MacroPeriodSelection, MacroPeriodSelectionCreate
 from .audit import AuditEvent
+from .macro_period_unit import MacroPeriodUnitCreate, MacroPeriodUnitResponse
 
 
 class MacroPeriodBase(BaseModel):
-    unit_id: int
     doctor_id: int
     start_date: date
     end_date: date
-    suggested_surgery_min: Optional[int] = None
-    suggested_surgery_max: Optional[int] = None
-    suggested_consult_min: Optional[int] = None
-    suggested_consult_max: Optional[int] = None
     priority: Optional[Priority] = Priority.NORMAL
     deadline: Optional[date] = None
 
@@ -27,7 +23,14 @@ class MacroPeriodBase(BaseModel):
 
 
 class MacroPeriodCreate(MacroPeriodBase):
-    pass
+    units: List[MacroPeriodUnitCreate]
+
+    @field_validator('units')
+    @classmethod
+    def validate_units(cls, v):
+        if len(v) < 1:
+            raise ValueError('Pelo menos 1 unidade é obrigatória')
+        return v
 
 
 class MacroPeriodResponse(MacroPeriodBase):
@@ -45,6 +48,7 @@ class MacroPeriodResponse(MacroPeriodBase):
 
 
 class MacroPeriodDetail(MacroPeriodResponse):
+    units: List[MacroPeriodUnitResponse] = []
     selections: List[MacroPeriodSelection] = []
     audit_events: List[AuditEvent] = []
 
@@ -54,9 +58,8 @@ class MacroPeriodDetail(MacroPeriodResponse):
 
 class MacroPeriodListItem(BaseModel):
     id: int
-    unit_name: str
-    unit_city: str
     doctor_name: str
+    units: List[dict] = []  # Simple dict for list view: [{unit_name, unit_city, surgery_days, consult_days}]
     start_date: date
     end_date: date
     status: MacroPeriodStatus
@@ -71,20 +74,15 @@ class MacroPeriodListItem(BaseModel):
 
 class MacroPeriodPublicView(BaseModel):
     id: int
-    unit_name: str
-    unit_city: str
     doctor_name: str
     start_date: date
     end_date: date
     status: MacroPeriodStatus
-    suggested_surgery_min: Optional[int] = None
-    suggested_surgery_max: Optional[int] = None
-    suggested_consult_min: Optional[int] = None
-    suggested_consult_max: Optional[int] = None
-    config_turnos: dict
+    units: List[MacroPeriodUnitResponse] = []
     selections: List[MacroPeriodSelection] = []
     can_edit: bool
 
 
 class DoctorResponseSubmit(BaseModel):
     selections: List[MacroPeriodSelectionCreate]
+    confirm: bool = False  # If False, saves draft; if True, confirms and locks

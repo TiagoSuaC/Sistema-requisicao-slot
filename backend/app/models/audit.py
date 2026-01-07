@@ -8,6 +8,7 @@ from ..database import Base
 class EventType(str, enum.Enum):
     CREATED = "CREATED"
     LINK_VIEWED = "LINK_VIEWED"
+    DRAFT_SAVED = "DRAFT_SAVED"
     RESPONDED = "RESPONDED"
     UNLOCKED = "UNLOCKED"
     UPDATED = "UPDATED"

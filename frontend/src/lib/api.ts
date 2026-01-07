@@ -93,9 +93,15 @@ export const getMacroPeriodByToken = async (token: string) => {
   return response.data;
 };
 
-export const submitDoctorResponse = async (token: string, selections: any[]) => {
+export const submitDoctorResponse = async (token: string, selections: any[], confirm: boolean = false) => {
   const response = await api.post(`/public/macro-period/${token}/response`, {
     selections,
+    confirm,
   });
+  return response.data;
+};
+
+export const updateMacroPeriod = async (id: number, data: any) => {
+  const response = await api.put(`/macro-periods/${id}`, data);
   return response.data;
 };

@@ -39,21 +39,24 @@ def create_macro_period(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # Verify unit and doctor exist
-    unit = db.query(Unit).filter(Unit.id == macro_period.unit_id).first()
-    if not unit:
-        raise HTTPException(status_code=404, detail="Unit not found")
-
+    # Verify doctor exists
     doctor = db.query(Doctor).filter(Doctor.id == macro_period.doctor_id).first()
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
 
+    # Verify all units exist
+    unit_ids = [u.unit_id for u in macro_period.units]
+    units = db.query(Unit).filter(Unit.id.in_(unit_ids)).all()
+    if len(units) != len(unit_ids):
+        raise HTTPException(status_code=404, detail="One or more units not found")
+
     # Generate public token
     public_token = generate_public_token()
 
-    # Create macro period
+    # Create macro period (without units in model_dump)
+    macro_period_data = macro_period.model_dump(exclude={'units'})
     db_macro_period = MacroPeriod(
-        **macro_period.model_dump(),
+        **macro_period_data,
         public_token=public_token,
         created_by=current_user["email"],
         status=MacroPeriodStatus.AGUARDANDO
@@ -61,16 +64,99 @@ def create_macro_period(
     db.add(db_macro_period)
     db.flush()
 
+    # Create macro_period_units
+    from ..models.macro_period_unit import MacroPeriodUnit
+    for idx, unit_data in enumerate(macro_period.units):
+        db_unit = MacroPeriodUnit(
+            macro_period_id=db_macro_period.id,
+            unit_id=unit_data.unit_id,
+            total_days=unit_data.total_days,
+            order_position=idx
+        )
+        db.add(db_unit)
+
     # Create audit event
+    unit_names = [u.name for u in units]
     audit_event = AuditEvent(
         macro_period_id=db_macro_period.id,
         event_type=EventType.CREATED,
         created_by=current_user["email"],
         payload={
-            "unit_name": unit.name,
+            "units": unit_names,
             "doctor_name": doctor.name,
             "start_date": str(macro_period.start_date),
             "end_date": str(macro_period.end_date)
+        }
+    )
+    db.add(audit_event)
+    db.commit()
+    db.refresh(db_macro_period)
+
+    return db_macro_period
+
+
+@router.put("/{macro_period_id}", response_model=MacroPeriodResponse)
+def update_macro_period(
+    macro_period_id: int,
+    macro_period: MacroPeriodCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    db_macro_period = db.query(MacroPeriod).filter(MacroPeriod.id == macro_period_id).first()
+    if not db_macro_period:
+        raise HTTPException(status_code=404, detail="Macro period not found")
+
+    # Only allow editing if status is AGUARDANDO
+    if db_macro_period.status != MacroPeriodStatus.AGUARDANDO:
+        raise HTTPException(status_code=400, detail="Can only edit periods in AGUARDANDO status")
+
+    # Verify doctor exists
+    doctor = db.query(Doctor).filter(Doctor.id == macro_period.doctor_id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    # Verify all units exist
+    unit_ids = [u.unit_id for u in macro_period.units]
+    units = db.query(Unit).filter(Unit.id.in_(unit_ids)).all()
+    if len(units) != len(unit_ids):
+        raise HTTPException(status_code=404, detail="One or more units not found")
+
+    # Update macro period fields
+    db_macro_period.doctor_id = macro_period.doctor_id
+    db_macro_period.start_date = macro_period.start_date
+    db_macro_period.end_date = macro_period.end_date
+    db_macro_period.priority = macro_period.priority
+    db_macro_period.deadline = macro_period.deadline
+
+    # Delete existing macro_period_units
+    from ..models.macro_period_unit import MacroPeriodUnit
+    db.query(MacroPeriodUnit).filter(MacroPeriodUnit.macro_period_id == macro_period_id).delete()
+
+    # Delete existing selections (if dates changed)
+    db.query(MacroPeriodSelection).filter(MacroPeriodSelection.macro_period_id == macro_period_id).delete()
+
+    # Create new macro_period_units
+    for idx, unit_data in enumerate(macro_period.units):
+        db_unit = MacroPeriodUnit(
+            macro_period_id=db_macro_period.id,
+            unit_id=unit_data.unit_id,
+            total_days=unit_data.total_days,
+            order_position=idx
+        )
+        db.add(db_unit)
+
+    # Create audit event
+    unit_names = [u.name for u in units]
+    audit_event = AuditEvent(
+        macro_period_id=db_macro_period.id,
+        event_type=EventType.UPDATED,
+        created_by=current_user["email"],
+        payload={
+            "units": unit_names,
+            "doctor_name": doctor.name,
+            "start_date": str(macro_period.start_date),
+            "end_date": str(macro_period.end_date),
+            "action": "admin_edited"
         }
     )
     db.add(audit_event)
@@ -93,16 +179,14 @@ def list_macro_periods(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    query = db.query(
-        MacroPeriod,
-        Unit.name.label("unit_name"),
-        Unit.city.label("unit_city"),
-        Doctor.name.label("doctor_name")
-    ).join(Unit).join(Doctor)
+    from ..models.macro_period_unit import MacroPeriodUnit
+
+    query = db.query(MacroPeriod, Doctor.name.label("doctor_name")).join(Doctor)
 
     # Filters
     if unit_id:
-        query = query.filter(MacroPeriod.unit_id == unit_id)
+        # Filter by macro periods that have this specific unit
+        query = query.join(MacroPeriodUnit).filter(MacroPeriodUnit.unit_id == unit_id)
     if doctor_id:
         query = query.filter(MacroPeriod.doctor_id == doctor_id)
     if status:
@@ -123,12 +207,20 @@ def list_macro_periods(
 
     # Format response
     items = []
-    for macro_period, unit_name, unit_city, doctor_name in results:
+    for macro_period, doctor_name in results:
+        # Get units for this macro period
+        units_data = []
+        for mp_unit in macro_period.units:
+            units_data.append({
+                "unit_name": mp_unit.unit.name,
+                "unit_city": mp_unit.unit.city,
+                "total_days": mp_unit.total_days
+            })
+
         items.append(MacroPeriodListItem(
             id=macro_period.id,
-            unit_name=unit_name,
-            unit_city=unit_city,
             doctor_name=doctor_name,
+            units=units_data,
             start_date=macro_period.start_date,
             end_date=macro_period.end_date,
             status=macro_period.status,
@@ -150,11 +242,45 @@ def get_macro_period(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    from ..schemas.macro_period_unit import MacroPeriodUnitResponse
+
     macro_period = db.query(MacroPeriod).filter(MacroPeriod.id == macro_period_id).first()
     if not macro_period:
         raise HTTPException(status_code=404, detail="Macro period not found")
 
-    return macro_period
+    # Build units response
+    units_response = []
+    for mp_unit in macro_period.units:
+        units_response.append(MacroPeriodUnitResponse(
+            id=mp_unit.id,
+            macro_period_id=mp_unit.macro_period_id,
+            unit_id=mp_unit.unit_id,
+            unit_name=mp_unit.unit.name,
+            unit_city=mp_unit.unit.city,
+            total_days=mp_unit.total_days,
+            order_position=mp_unit.order_position,
+            config_turnos=mp_unit.unit.config_turnos
+        ))
+
+    # Get doctor for response
+    doctor = db.query(Doctor).filter(Doctor.id == macro_period.doctor_id).first()
+
+    return MacroPeriodDetail(
+        id=macro_period.id,
+        doctor_id=macro_period.doctor_id,
+        start_date=macro_period.start_date,
+        end_date=macro_period.end_date,
+        status=macro_period.status,
+        priority=macro_period.priority,
+        deadline=macro_period.deadline,
+        public_token=macro_period.public_token,
+        created_at=macro_period.created_at,
+        created_by=macro_period.created_by,
+        responded_at=macro_period.responded_at,
+        units=units_response,
+        selections=macro_period.selections,
+        audit_events=macro_period.audit_events
+    )
 
 
 @router.post("/{macro_period_id}/unlock")

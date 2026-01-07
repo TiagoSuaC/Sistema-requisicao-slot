@@ -1,5 +1,4 @@
 from sqlalchemy import Column, Integer, String, JSON
-from sqlalchemy.orm import relationship
 from ..database import Base
 
 
@@ -13,6 +12,3 @@ class Unit(Base):
         "morning": {"start": "08:00", "end": "12:00"},
         "afternoon": {"start": "13:00", "end": "17:00"}
     })
-
-    # Relationships
-    macro_periods = relationship("MacroPeriod", back_populates="unit")

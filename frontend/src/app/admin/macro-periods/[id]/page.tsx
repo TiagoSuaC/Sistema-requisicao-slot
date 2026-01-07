@@ -156,12 +156,20 @@ export default function MacroPeriodDetailPage() {
 
         {/* Info Grid */}
         <div className="grid grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-500">Unidade</label>
-            <p className="mt-1 text-lg">{macroPeriod.unit_id}</p>
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-500 mb-2">Unidades</label>
+            {macroPeriod.units?.map((unit, idx) => (
+              <div key={idx} className="bg-gray-50 p-3 rounded mb-2">
+                <p className="font-medium">{unit.unit_name} - {unit.unit_city}</p>
+                <p className="text-sm text-gray-600">
+                  {unit.surgery_days}🔪 + {unit.consult_days}👨‍⚕️ dias
+                  {unit.order === "SURGERY_FIRST" ? " (Cirurgias primeiro)" : " (Consultas primeiro)"}
+                </p>
+              </div>
+            ))}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-500">Médico</label>
+            <label className="block text-sm font-medium text-gray-500">Médico ID</label>
             <p className="mt-1 text-lg">{macroPeriod.doctor_id}</p>
           </div>
           <div>

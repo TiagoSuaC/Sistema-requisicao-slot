@@ -9,7 +9,6 @@ export type MacroPeriodStatus =
 export type Priority = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
 
 export type PartOfDay = "MORNING" | "AFTERNOON" | "FULL_DAY" | "CUSTOM";
-export type SelectionType = "SURGERY" | "CONSULT";
 
 export interface Unit {
   id: number;
@@ -28,13 +27,28 @@ export interface Doctor {
   active: boolean;
 }
 
+export interface MacroPeriodUnit {
+  id: number;
+  macro_period_id: number;
+  unit_id: number;
+  unit_name: string;
+  unit_city: string;
+  total_days: number;
+  order_position?: number;
+  config_turnos: {
+    morning: { start: string; end: string };
+    afternoon: { start: string; end: string };
+  };
+}
+
 export interface MacroPeriodSelection {
   id?: number;
+  macro_period_unit_id?: number;
   date: string;
   part_of_day: PartOfDay;
   custom_start?: string;
   custom_end?: string;
-  type: SelectionType;
+  block_id?: string;
 }
 
 export interface MacroPeriod {
@@ -58,9 +72,12 @@ export interface MacroPeriod {
 
 export interface MacroPeriodListItem {
   id: number;
-  unit_name: string;
-  unit_city: string;
   doctor_name: string;
+  units: Array<{
+    unit_name: string;
+    unit_city: string;
+    total_days: number;
+  }>;
   start_date: string;
   end_date: string;
   status: MacroPeriodStatus;
@@ -88,20 +105,11 @@ export interface AuditEvent {
 
 export interface MacroPeriodPublicView {
   id: number;
-  unit_name: string;
-  unit_city: string;
   doctor_name: string;
   start_date: string;
   end_date: string;
   status: MacroPeriodStatus;
-  suggested_surgery_min?: number;
-  suggested_surgery_max?: number;
-  suggested_consult_min?: number;
-  suggested_consult_max?: number;
-  config_turnos: {
-    morning: { start: string; end: string };
-    afternoon: { start: string; end: string };
-  };
+  units: MacroPeriodUnit[];
   selections: MacroPeriodSelection[];
   can_edit: boolean;
 }
