@@ -50,7 +50,7 @@ export default function MacroPeriodsPage() {
 
   useEffect(() => {
     loadData();
-  }, [filterUnit, filterDoctor, filterStatus, filterStartDate, filterEndDate, sortByDiasAberto]);
+  }, [filterUnit, filterDoctor, filterStatus, filterStartDate, filterEndDate]);
 
   const loadData = async () => {
     try {
@@ -61,7 +61,6 @@ export default function MacroPeriodsPage() {
           status: filterStatus || undefined,
           start_date: filterStartDate || undefined,
           end_date: filterEndDate || undefined,
-          sort_by_dias_aberto: sortByDiasAberto,
         }),
         getUnits(),
         getDoctors(),
@@ -251,10 +250,10 @@ export default function MacroPeriodsPage() {
   };
 
   const handleToggleAll = () => {
-    if (selectedPeriods.length === filteredByTab.length) {
+    if (selectedPeriods.length === sortedPeriods.length) {
       setSelectedPeriods([]);
     } else {
-      setSelectedPeriods(filteredByTab.map((p) => p.id));
+      setSelectedPeriods(sortedPeriods.map((p) => p.id));
     }
   };
 
@@ -348,6 +347,15 @@ export default function MacroPeriodsPage() {
     if (activeTab === "inativos") return period.status === "CANCELADO";
     return true; // todos
   });
+
+  // Aplicar ordenação no frontend (se habilitado)
+  const sortedPeriods = sortByDiasAberto
+    ? [...filteredByTab].sort((a, b) => {
+        const diasA = a.dias_em_aberto ?? -1;
+        const diasB = b.dias_em_aberto ?? -1;
+        return diasB - diasA; // Decrescente: maiores dias em aberto primeiro
+      })
+    : filteredByTab;
 
   if (loading) {
     return <div className="p-4">Carregando...</div>;
@@ -783,7 +791,7 @@ export default function MacroPeriodsPage() {
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                 <input
                   type="checkbox"
-                  checked={selectedPeriods.length === filteredByTab.length && filteredByTab.length > 0}
+                  checked={selectedPeriods.length === sortedPeriods.length && sortedPeriods.length > 0}
                   onChange={handleToggleAll}
                   className="rounded"
                 />
@@ -815,7 +823,7 @@ export default function MacroPeriodsPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredByTab.map((period) => {
+            {sortedPeriods.map((period) => {
               const isUrgent = period.dias_em_aberto !== null && period.dias_em_aberto !== undefined && period.dias_em_aberto >= 3;
               return (
               <tr
@@ -957,7 +965,7 @@ export default function MacroPeriodsPage() {
             })}
           </tbody>
         </table>
-        {filteredByTab.length === 0 && (
+        {sortedPeriods.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             Nenhum macro período encontrado
           </div>
