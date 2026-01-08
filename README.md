@@ -4,9 +4,14 @@ MVP completo para gerenciamento de disponibilidade de médicos através de macro
 
 ## 🎯 Características Principais
 
+- **Sistema Multi-Unidade**: Crie macro períodos com múltiplas unidades simultaneamente
+- **Validação de Conflitos**: Detecção automática de sobreposição de horários
+- **Workflow Draft/Confirm**: Salve rascunhos antes de confirmar definitivamente
+- **Modal de Revisão**: Revise todas as seleções em formato tabular antes de confirmar
+- **Exportar para Calendários**: Adicione automaticamente ao Google Calendar ou iPhone/Apple Calendar
 - **Painel Administrativo**: Criação, visualização e gerenciamento de macro períodos
 - **Link Público Único**: Cada médico recebe link seguro para responder
-- **Calendário Interativo**: Seleção visual de dias com tipo (Cirurgia/Consulta) e período (Manhã/Tarde/Dia Inteiro/Customizado)
+- **Calendário Interativo**: Seleção visual de dias com períodos (Manhã/Tarde/Dia Inteiro/Customizado)
 - **SLA e Métricas**: Dias em aberto, tempo até resposta
 - **Controle de Edição**: Status com bloqueio/liberação de edição
 - **Audit Trail Completo**: Histórico de todas as ações
@@ -183,6 +188,8 @@ Registra automaticamente:
 ### Público (Sem Auth)
 - `GET /public/macro-period/{token}` - Ver macro período por token
 - `POST /public/macro-period/{token}/response` - Enviar resposta
+- `GET /public/macro-period/{token}/calendar` - Baixar arquivo .ics
+- `GET /public/macro-period/{token}/calendar-feed` - Feed webcal:// para assinatura
 
 ### Autenticado (Requer Bearer Token)
 - `POST /auth/login` - Login (retorna JWT)
@@ -313,6 +320,19 @@ MVP para uso interno. Código proprietário.
 
 ---
 
-**Versão**: 1.0.0
-**Data**: Janeiro 2025
-**Status**: MVP - Ready for Production Hardening
+**Versão**: 2.0.0
+**Data**: Janeiro 2026
+**Status**: Produção - Sistema Multi-Unidade com Validações Avançadas
+
+---
+
+## 📚 Documentação Adicional
+
+- **[PRD.md](PRD.md)** - Product Requirements Document
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Documentação de Arquitetura
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Guia de Contribuição
+- **[CHANGELOG.md](CHANGELOG.md)** - Histórico de Versões
+- **[COMECE_AQUI.md](COMECE_AQUI.md)** - Guia de Início Rápido
+- **[FLUXO_VISUAL.md](FLUXO_VISUAL.md)** - Diagramas e Mockups
+- **[VALIDACAO.md](VALIDACAO.md)** - Checklist de Validação
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Solução de Problemas
