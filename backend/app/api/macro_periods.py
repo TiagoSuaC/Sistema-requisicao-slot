@@ -596,9 +596,9 @@ def get_dashboard_metrics(
         MacroPeriod.created_at <= end_datetime
     ).all()
 
-    # Agrupar seleções por semana
+    # Agrupar datas únicas por semana
     from collections import defaultdict
-    weeks_data = defaultdict(int)
+    weeks_data = defaultdict(set)  # Usar set para contar dias únicos
 
     for selection in selections_query:
         # Encontrar o início da semana (segunda-feira) da data de seleção
@@ -606,7 +606,7 @@ def get_dashboard_metrics(
         week_start = selection_date - timedelta(days=selection_date.weekday())
         week_end = week_start + timedelta(days=6)
         week_key = (week_start, week_end)
-        weeks_data[week_key] += 1
+        weeks_data[week_key].add(selection_date)  # Adicionar ao set (dias únicos)
 
     # Ordenar por data e limitar a 12 semanas
     sorted_weeks = sorted(weeks_data.items(), key=lambda x: x[0][0])[:12]
@@ -614,9 +614,9 @@ def get_dashboard_metrics(
     tendencia_semanal = [
         {
             "periodo": f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m')}",
-            "total": count
+            "total": len(dates)  # Contar dias únicos no set
         }
-        for (week_start, week_end), count in sorted_weeks
+        for (week_start, week_end), dates in sorted_weeks
     ]
 
     # Análise por médico
