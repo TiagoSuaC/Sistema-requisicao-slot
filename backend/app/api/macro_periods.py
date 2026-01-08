@@ -62,6 +62,11 @@ def create_macro_period(
 
     # Create macro period (without units in model_dump)
     macro_period_data = macro_period.model_dump(exclude={'units'})
+
+    # Se deadline não foi fornecido, calcular automaticamente (hoje + 2 dias)
+    if not macro_period_data.get('deadline'):
+        macro_period_data['deadline'] = date.today() + timedelta(days=2)
+
     db_macro_period = MacroPeriod(
         **macro_period_data,
         public_token=public_token,

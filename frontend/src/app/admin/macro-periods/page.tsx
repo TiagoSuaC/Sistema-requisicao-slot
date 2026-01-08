@@ -37,6 +37,14 @@ export default function MacroPeriodsPage() {
     ]
   });
 
+  // Função para calcular deadline padrão (hoje + 2 dias)
+  const getDefaultDeadline = () => {
+    const today = new Date();
+    const deadline = new Date(today);
+    deadline.setDate(today.getDate() + 2);
+    return deadline.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+  };
+
   // Filters
   const [filterUnit, setFilterUnit] = useState("");
   const [filterDoctor, setFilterDoctor] = useState("");
@@ -372,7 +380,16 @@ export default function MacroPeriodsPage() {
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (!showForm) {
+                // Ao abrir o formulário, preencher deadline com data + 2 dias
+                setFormData({
+                  ...formData,
+                  deadline: getDefaultDeadline()
+                });
+              }
+              setShowForm(!showForm);
+            }}
             className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
           >
             {showForm ? "Cancelar" : "Criar Macro Período"}
@@ -449,7 +466,7 @@ export default function MacroPeriodsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Deadline (opcional)
+                  Deadline para Resposta
                 </label>
                 <input
                   type="date"
@@ -457,6 +474,7 @@ export default function MacroPeriodsPage() {
                   onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm px-3 py-2 border"
                 />
+                <p className="mt-1 text-xs text-gray-500">Padrão: 2 dias a partir do envio</p>
               </div>
             </div>
 
