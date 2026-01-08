@@ -101,6 +101,13 @@ export const submitDoctorResponse = async (token: string, selections: any[], con
   return response.data;
 };
 
+export const exportMacroPeriodCalendar = async (token: string) => {
+  const response = await api.get(`/public/macro-period/${token}/calendar`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
 export const updateMacroPeriod = async (id: number, data: any) => {
   const response = await api.put(`/macro-periods/${id}`, data);
   return response.data;

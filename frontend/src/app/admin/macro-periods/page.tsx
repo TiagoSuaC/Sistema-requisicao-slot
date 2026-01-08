@@ -416,15 +416,8 @@ export default function MacroPeriodsPage() {
             </div>
 
             <div className="border-t pt-4">
-              <div className="flex justify-between items-center mb-4">
+              <div className="mb-4">
                 <h3 className="text-md font-medium text-gray-900">Unidades *</h3>
-                <button
-                  type="button"
-                  onClick={addUnit}
-                  className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
-                >
-                  ➕ Adicionar Unidade
-                </button>
               </div>
 
               <div className="space-y-4">
@@ -480,6 +473,16 @@ export default function MacroPeriodsPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="border-t pt-4 pb-4">
+              <button
+                type="button"
+                onClick={addUnit}
+                className="w-full inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
+              >
+                ➕ Adicionar Unidade
+              </button>
             </div>
 
             <div className="border-t pt-4">

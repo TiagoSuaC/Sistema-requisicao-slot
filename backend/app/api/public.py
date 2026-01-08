@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time as dt_time
 from typing import List
 from ..database import get_db
 from ..models import MacroPeriod, Unit, Doctor, AuditEvent, MacroPeriodSelection
@@ -8,6 +9,8 @@ from ..models.macro_period import MacroPeriodStatus
 from ..models.audit import EventType
 from ..schemas.macro_period import MacroPeriodPublicView, DoctorResponseSubmit
 from ..schemas.selection import MacroPeriodSelectionCreate
+from icalendar import Calendar, Event
+from ..models.selection import PartOfDay
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -236,3 +239,127 @@ def validate_unit_requirements(selections: List[MacroPeriodSelectionCreate], mac
                 status_code=400,
                 detail=f"Unit {mp_unit.unit.name} requires {mp_unit.total_days} days, but got {day_count}"
             )
+
+
+def _generate_calendar(macro_period, db: Session):
+    """Helper function to generate iCalendar content"""
+    from ..models.macro_period_unit import MacroPeriodUnit
+
+    # Get doctor info
+    doctor = db.query(Doctor).filter(Doctor.id == macro_period.doctor_id).first()
+
+    # Create calendar
+    cal = Calendar()
+    cal.add('prodid', '-//Sistema de Requisição de Slot//BR')
+    cal.add('version', '2.0')
+    cal.add('calscale', 'GREGORIAN')
+    cal.add('method', 'PUBLISH')
+    cal.add('x-wr-calname', f'Agenda - {doctor.name}')
+    cal.add('x-wr-timezone', 'America/Sao_Paulo')
+
+    # Process each selection
+    for selection in macro_period.selections:
+        # Get unit info
+        mp_unit = db.query(MacroPeriodUnit).filter(MacroPeriodUnit.id == selection.macro_period_unit_id).first()
+        if not mp_unit:
+            continue
+
+        unit = db.query(Unit).filter(Unit.id == mp_unit.unit_id).first()
+        if not unit:
+            continue
+
+        # Determine start and end times
+        if selection.part_of_day == PartOfDay.MORNING:
+            start_time = dt_time(8, 0)
+            end_time = dt_time(12, 0)
+        elif selection.part_of_day == PartOfDay.AFTERNOON:
+            start_time = dt_time(14, 0)
+            end_time = dt_time(18, 0)
+        elif selection.part_of_day == PartOfDay.FULL_DAY:
+            start_time = dt_time(8, 0)
+            end_time = dt_time(18, 0)
+        elif selection.part_of_day == PartOfDay.CUSTOM and selection.custom_start and selection.custom_end:
+            start_time = selection.custom_start
+            end_time = selection.custom_end
+        else:
+            # Skip if can't determine times
+            continue
+
+        # Create event
+        event = Event()
+        event.add('summary', f'{unit.name} - {unit.city}')
+
+        # Combine date and time for datetime objects
+        start_dt = datetime.combine(selection.date, start_time)
+        end_dt = datetime.combine(selection.date, end_time)
+
+        event.add('dtstart', start_dt)
+        event.add('dtend', end_dt)
+        event.add('location', f'{unit.name}, {unit.city}')
+        event.add('description', f'Plantão na unidade {unit.name} ({unit.city})')
+        event.add('uid', f'macro-period-{macro_period.id}-selection-{selection.id}@sistema-requisicao-slot')
+        event.add('dtstamp', datetime.now())
+
+        cal.add_component(event)
+
+    return cal
+
+
+@router.get("/macro-period/{token}/calendar")
+def export_macro_period_calendar(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Export doctor's confirmed schedule as iCalendar (.ics) file for download"""
+    # Get macro period
+    macro_period = db.query(MacroPeriod).filter(MacroPeriod.public_token == token).first()
+    if not macro_period:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+
+    # Check if there are selections
+    if not macro_period.selections or len(macro_period.selections) == 0:
+        raise HTTPException(status_code=400, detail="No schedule to export")
+
+    # Get doctor info
+    doctor = db.query(Doctor).filter(Doctor.id == macro_period.doctor_id).first()
+
+    # Generate calendar
+    cal = _generate_calendar(macro_period, db)
+    ics_content = cal.to_ical()
+
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+        headers={
+            "Content-Disposition": f"attachment; filename=agenda_{doctor.name.replace(' ', '_')}.ics"
+        }
+    )
+
+
+@router.get("/macro-period/{token}/calendar-feed")
+def get_macro_period_calendar_feed(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Calendar feed endpoint for webcal:// subscription (iPhone/Apple Calendar)"""
+    # Get macro period
+    macro_period = db.query(MacroPeriod).filter(MacroPeriod.public_token == token).first()
+    if not macro_period:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+
+    # Check if there are selections
+    if not macro_period.selections or len(macro_period.selections) == 0:
+        raise HTTPException(status_code=400, detail="No schedule to export")
+
+    # Generate calendar
+    cal = _generate_calendar(macro_period, db)
+    ics_content = cal.to_ical()
+
+    return Response(
+        content=ics_content,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Type": "text/calendar; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )

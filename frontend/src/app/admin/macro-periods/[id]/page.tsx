@@ -162,8 +162,7 @@ export default function MacroPeriodDetailPage() {
               <div key={idx} className="bg-gray-50 p-3 rounded mb-2">
                 <p className="font-medium">{unit.unit_name} - {unit.unit_city}</p>
                 <p className="text-sm text-gray-600">
-                  {unit.surgery_days}🔪 + {unit.consult_days}👨‍⚕️ dias
-                  {unit.order === "SURGERY_FIRST" ? " (Cirurgias primeiro)" : " (Consultas primeiro)"}
+                  {unit.total_days} {unit.total_days === 1 ? 'dia' : 'dias'}
                 </p>
               </div>
             ))}
@@ -256,7 +255,7 @@ export default function MacroPeriodDetailPage() {
                       Data
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Tipo
+                      Unidade
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                       Período
@@ -267,30 +266,42 @@ export default function MacroPeriodDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {macroPeriod.selections.map((selection, idx) => (
-                    <tr key={idx}>
-                      <td className="px-4 py-2 text-sm">
-                        {new Date(selection.date).toLocaleDateString("pt-BR")}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {selection.type === "SURGERY" ? "Cirurgia" : "Consulta"}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {selection.part_of_day === "MORNING"
-                          ? "Manhã"
-                          : selection.part_of_day === "AFTERNOON"
-                          ? "Tarde"
-                          : selection.part_of_day === "FULL_DAY"
-                          ? "Dia Inteiro"
-                          : "Customizado"}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
-                        {selection.custom_start && selection.custom_end
-                          ? `${selection.custom_start} - ${selection.custom_end}`
-                          : "-"}
-                      </td>
-                    </tr>
-                  ))}
+                  {macroPeriod.selections
+                    .sort((a, b) => {
+                      // Sort by date first, then by unit name
+                      if (a.date !== b.date) return a.date.localeCompare(b.date);
+                      const unitA = macroPeriod.units?.find(u => u.id === a.macro_period_unit_id);
+                      const unitB = macroPeriod.units?.find(u => u.id === b.macro_period_unit_id);
+                      return (unitA?.unit_name || '').localeCompare(unitB?.unit_name || '');
+                    })
+                    .map((selection, idx) => {
+                      const unit = macroPeriod.units?.find(u => u.id === selection.macro_period_unit_id);
+
+                      return (
+                        <tr key={idx}>
+                          <td className="px-4 py-2 text-sm">
+                            {new Date(selection.date).toLocaleDateString("pt-BR")}
+                          </td>
+                          <td className="px-4 py-2 text-sm">
+                            {unit ? `${unit.unit_name} - ${unit.unit_city}` : "-"}
+                          </td>
+                          <td className="px-4 py-2 text-sm">
+                            {selection.part_of_day === "MORNING"
+                              ? "Manhã"
+                              : selection.part_of_day === "AFTERNOON"
+                              ? "Tarde"
+                              : selection.part_of_day === "FULL_DAY"
+                              ? "Dia Inteiro"
+                              : "Customizado"}
+                          </td>
+                          <td className="px-4 py-2 text-sm">
+                            {selection.custom_start && selection.custom_end
+                              ? `${selection.custom_start} - ${selection.custom_end}`
+                              : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
