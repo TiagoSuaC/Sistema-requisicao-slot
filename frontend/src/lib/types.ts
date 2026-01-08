@@ -113,3 +113,20 @@ export interface MacroPeriodPublicView {
   selections: MacroPeriodSelection[];
   can_edit: boolean;
 }
+
+export interface AdminEditEvidence {
+  id: number;
+  macro_period_id: number;
+  file_path: string;
+  original_filename?: string;
+  file_size?: number;
+  mime_type?: string;
+  notes?: string;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+
+export interface EnableAdminEditResponse {
+  token: string;
+  expires_at: string;
+}

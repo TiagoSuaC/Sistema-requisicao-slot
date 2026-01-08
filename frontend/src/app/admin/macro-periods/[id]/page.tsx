@@ -8,8 +8,11 @@ import {
   confirmMacroPeriod,
   cancelMacroPeriod,
   exportMacroPeriodCSV,
+  getAdminEvidences,
 } from "@/lib/api";
-import type { MacroPeriodDetail, AuditEvent } from "@/lib/types";
+import type { MacroPeriodDetail, AuditEvent, AdminEditEvidence, EnableAdminEditResponse } from "@/lib/types";
+import AdminEditEvidenceModal from "@/components/AdminEditEvidenceModal";
+import AdminEditView from "@/components/AdminEditView";
 
 export default function MacroPeriodDetailPage() {
   const params = useParams();
@@ -17,6 +20,10 @@ export default function MacroPeriodDetailPage() {
   const id = parseInt(params.id as string);
   const [macroPeriod, setMacroPeriod] = useState<MacroPeriodDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showEvidenceModal, setShowEvidenceModal] = useState(false);
+  const [showAdminEditView, setShowAdminEditView] = useState(false);
+  const [currentEditToken, setCurrentEditToken] = useState<EnableAdminEditResponse | null>(null);
+  const [evidences, setEvidences] = useState<AdminEditEvidence[]>([]);
 
   useEffect(() => {
     loadData();
@@ -26,6 +33,12 @@ export default function MacroPeriodDetailPage() {
     try {
       const data = await getMacroPeriodDetail(id);
       setMacroPeriod(data);
+
+      // Load evidences if status is RESPONDIDO
+      if (data.status === "RESPONDIDO") {
+        const evidenceData = await getAdminEvidences(id);
+        setEvidences(evidenceData);
+      }
     } catch (error) {
       console.error("Error loading macro period:", error);
       alert("Erro ao carregar macro período");
@@ -88,6 +101,29 @@ export default function MacroPeriodDetailPage() {
     const link = `${window.location.origin}/p/${macroPeriod?.public_token}`;
     navigator.clipboard.writeText(link);
     alert("Link copiado para a área de transferência!");
+  };
+
+  const handleAdminEdit = () => {
+    setShowEvidenceModal(true);
+  };
+
+  const handleEvidenceSuccess = (evidence: AdminEditEvidence, editToken: EnableAdminEditResponse) => {
+    setShowEvidenceModal(false);
+    setCurrentEditToken(editToken);
+    setEvidences([evidence, ...evidences]);
+    setShowAdminEditView(true);
+  };
+
+  const handleAdminEditSuccess = () => {
+    setShowAdminEditView(false);
+    setCurrentEditToken(null);
+    alert("Edições salvas com sucesso!");
+    loadData();
+  };
+
+  const handleAdminEditCancel = () => {
+    setShowAdminEditView(false);
+    setCurrentEditToken(null);
   };
 
   const formatEventPayload = (eventType: string, payload: any): string | null => {
@@ -216,11 +252,18 @@ export default function MacroPeriodDetailPage() {
             Copiar Link
           </button>
           <button
+            onClick={handleAdminEdit}
+            disabled={macroPeriod.status !== "RESPONDIDO"}
+            className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+          >
+            ✏️ Editar
+          </button>
+          <button
             onClick={handleUnlock}
             disabled={!["RESPONDIDO", "CONFIRMADO"].includes(macroPeriod.status)}
             className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Liberar Edição
+            Liberar Edição (Médico)
           </button>
           <button
             onClick={handleConfirm}
@@ -242,6 +285,37 @@ export default function MacroPeriodDetailPage() {
             Exportar CSV
           </button>
         </div>
+
+        {/* Admin Edit Evidences */}
+        {evidences.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold mb-3">Evidências de Edição Admin</h2>
+            <div className="space-y-2">
+              {evidences.map((evidence) => (
+                <div key={evidence.id} className="border-l-4 border-orange-500 pl-4 py-2 bg-orange-50">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-medium">
+                        📎 {evidence.original_filename}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Enviado por: {evidence.uploaded_by}
+                      </p>
+                      {evidence.notes && (
+                        <p className="text-sm text-gray-700 mt-1">
+                          Nota: {evidence.notes}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-sm text-gray-500">
+                      {new Date(evidence.uploaded_at).toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Selections */}
         <div className="mb-6">
@@ -333,6 +407,24 @@ export default function MacroPeriodDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      {showEvidenceModal && (
+        <AdminEditEvidenceModal
+          macroPeriodId={id}
+          onClose={() => setShowEvidenceModal(false)}
+          onSuccess={handleEvidenceSuccess}
+        />
+      )}
+
+      {showAdminEditView && currentEditToken && (
+        <AdminEditView
+          macroPeriod={macroPeriod}
+          editToken={currentEditToken}
+          onCancel={handleAdminEditCancel}
+          onSuccess={handleAdminEditSuccess}
+        />
+      )}
     </div>
   );
 }

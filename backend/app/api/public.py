@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, time as dt_time
-from typing import List
+from typing import List, Optional
 from ..database import get_db
 from ..models import MacroPeriod, Unit, Doctor, AuditEvent, MacroPeriodSelection
 from ..models.macro_period import MacroPeriodStatus
@@ -80,7 +80,8 @@ def get_macro_period_by_token(
 def submit_doctor_response(
     token: str,
     response: DoctorResponseSubmit,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    x_admin_edit_token: Optional[str] = Header(None)
 ):
     from ..models.macro_period_unit import MacroPeriodUnit
     from collections import defaultdict
@@ -89,9 +90,42 @@ def submit_doctor_response(
     if not macro_period:
         raise HTTPException(status_code=404, detail="Invalid or expired link")
 
-    # Check if can edit
-    if macro_period.status not in [MacroPeriodStatus.AGUARDANDO, MacroPeriodStatus.EDICAO_LIBERADA]:
-        raise HTTPException(status_code=400, detail="This period is locked and cannot be edited")
+    # Determine if this is an admin edit
+    is_admin_edit = False
+    admin_email = None
+
+    if x_admin_edit_token:
+        # Validate admin token from audit events
+        admin_audit = db.query(AuditEvent).filter(
+            AuditEvent.macro_period_id == macro_period.id,
+            AuditEvent.event_type == EventType.UPDATED
+        ).order_by(AuditEvent.created_at.desc()).all()
+
+        token_valid = False
+        for audit in admin_audit:
+            if audit.payload and audit.payload.get("action") == "admin_edit_enabled":
+                stored_token = audit.payload.get("admin_token")
+                expires_at_str = audit.payload.get("expires_at")
+
+                if stored_token == x_admin_edit_token and expires_at_str:
+                    expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+                    if datetime.now(timezone.utc) < expires_at:
+                        token_valid = True
+                        admin_email = audit.created_by
+                        is_admin_edit = True
+                        break
+
+        if not token_valid:
+            raise HTTPException(status_code=401, detail="Invalid or expired admin edit token")
+
+    # Check if can edit (normal flow for doctor)
+    if not is_admin_edit:
+        if macro_period.status not in [MacroPeriodStatus.AGUARDANDO, MacroPeriodStatus.EDICAO_LIBERADA]:
+            raise HTTPException(status_code=400, detail="This period is locked and cannot be edited")
+    else:
+        # Admin can only edit RESPONDIDO status
+        if macro_period.status != MacroPeriodStatus.RESPONDIDO:
+            raise HTTPException(status_code=400, detail="Admin can only edit periods in RESPONDIDO status")
 
     # Validate dates are within macro period
     for selection in response.selections:
@@ -134,28 +168,42 @@ def submit_doctor_response(
 
     # Update status based on confirm flag
     if response.confirm:
-        # Doctor is confirming - lock the period
-        was_first_response = macro_period.status == MacroPeriodStatus.AGUARDANDO
-        if was_first_response:
-            macro_period.responded_at = datetime.now(timezone.utc)
-            event_type = EventType.RESPONDED
-        else:
+        if is_admin_edit:
+            # Admin is confirming edit - status stays RESPONDIDO
             event_type = EventType.UPDATED
-        macro_period.status = MacroPeriodStatus.RESPONDIDO
+            # Status remains RESPONDIDO (don't change it)
+        else:
+            # Doctor is confirming - lock the period
+            was_first_response = macro_period.status == MacroPeriodStatus.AGUARDANDO
+            if was_first_response:
+                macro_period.responded_at = datetime.now(timezone.utc)
+                event_type = EventType.RESPONDED
+            else:
+                event_type = EventType.UPDATED
+            macro_period.status = MacroPeriodStatus.RESPONDIDO
     else:
-        # Doctor is saving draft - keep status as AGUARDANDO or EDICAO_LIBERADA
-        event_type = EventType.DRAFT_SAVED
+        # Saving draft
+        if is_admin_edit:
+            event_type = EventType.UPDATED
+        else:
+            event_type = EventType.DRAFT_SAVED
         # Status remains unchanged
 
     # Create audit event
+    payload = {
+        "total_selections": len(response.selections),
+        "dates": [str(s.date) for s in response.selections]
+    }
+
+    if is_admin_edit:
+        payload["action"] = "admin_edited"
+        payload["edited_by"] = admin_email
+
     audit_event = AuditEvent(
         macro_period_id=macro_period.id,
         event_type=event_type,
-        created_by="doctor",
-        payload={
-            "total_selections": len(response.selections),
-            "dates": [str(s.date) for s in response.selections]
-        }
+        created_by=admin_email if is_admin_edit else "doctor",
+        payload=payload
     )
     db.add(audit_event)
     db.commit()

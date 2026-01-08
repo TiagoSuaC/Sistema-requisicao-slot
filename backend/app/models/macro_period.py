@@ -41,3 +41,4 @@ class MacroPeriod(Base):
     units = relationship("MacroPeriodUnit", back_populates="macro_period", cascade="all, delete-orphan")
     selections = relationship("MacroPeriodSelection", back_populates="macro_period", cascade="all, delete-orphan")
     audit_events = relationship("AuditEvent", back_populates="macro_period", cascade="all, delete-orphan")
+    admin_evidences = relationship("AdminEditEvidence", back_populates="macro_period", cascade="all, delete-orphan")

@@ -1,18 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func, case
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta, timezone
 from io import StringIO
 import csv
+import secrets
+import os
+from pathlib import Path
 from ..database import get_db
 from ..auth import get_current_user
-from ..models import MacroPeriod, Unit, Doctor, AuditEvent, MacroPeriodSelection
+from ..models import MacroPeriod, Unit, Doctor, AuditEvent, MacroPeriodSelection, AdminEditEvidence
 from ..models.macro_period import MacroPeriodStatus
 from ..models.audit import EventType
 from ..schemas.macro_period import (
     MacroPeriodCreate, MacroPeriodResponse, MacroPeriodDetail,
     MacroPeriodListItem
+)
+from ..schemas.admin_edit_evidence import (
+    AdminEditEvidenceCreate, AdminEditEvidenceResponse,
+    EnableAdminEditRequest, EnableAdminEditResponse
 )
 from ..utils import generate_public_token
 
@@ -691,3 +698,161 @@ def get_dashboard_metrics(
         "tendencia_semanal": tendencia_semanal,
         "analise_por_medico": analise_por_medico
     }
+
+
+@router.post("/{macro_period_id}/upload-admin-evidence", response_model=AdminEditEvidenceResponse)
+async def upload_admin_evidence(
+    macro_period_id: int,
+    file: UploadFile = File(...),
+    notes: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Upload evidence file (screenshot/PDF) to justify admin edit.
+    This is MANDATORY before enabling admin edit mode.
+    """
+    # Verify macro period exists
+    macro_period = db.query(MacroPeriod).filter(MacroPeriod.id == macro_period_id).first()
+    if not macro_period:
+        raise HTTPException(status_code=404, detail="Macro period not found")
+
+    # Validate status - only allow for RESPONDIDO
+    if macro_period.status != MacroPeriodStatus.RESPONDIDO:
+        raise HTTPException(
+            status_code=400,
+            detail="Can only upload evidence for periods in RESPONDIDO status"
+        )
+
+    # Validate file type (images and PDFs only)
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif", "application/pdf"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type {file.content_type} not allowed. Only images (JPG, PNG, GIF) and PDF are accepted."
+        )
+
+    # Validate file size (max 5MB)
+    contents = await file.read()
+    file_size = len(contents)
+    if file_size > 5 * 1024 * 1024:  # 5MB
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
+
+    # Generate unique filename
+    file_extension = Path(file.filename).suffix
+    unique_filename = f"{secrets.token_urlsafe(16)}{file_extension}"
+
+    # Save file to uploads/evidence
+    upload_dir = Path("uploads/evidence")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / unique_filename
+
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    # Create database record
+    evidence = AdminEditEvidence(
+        macro_period_id=macro_period_id,
+        file_path=str(file_path),
+        original_filename=file.filename,
+        file_size=file_size,
+        mime_type=file.content_type,
+        notes=notes,
+        uploaded_by=current_user["email"]
+    )
+    db.add(evidence)
+
+    # Create audit event
+    audit_event = AuditEvent(
+        macro_period_id=macro_period_id,
+        event_type=EventType.UPDATED,
+        created_by=current_user["email"],
+        payload={
+            "action": "evidence_uploaded",
+            "filename": file.filename,
+            "notes": notes
+        }
+    )
+    db.add(audit_event)
+    db.commit()
+    db.refresh(evidence)
+
+    return evidence
+
+
+@router.post("/{macro_period_id}/enable-admin-edit", response_model=EnableAdminEditResponse)
+def enable_admin_edit(
+    macro_period_id: int,
+    request: EnableAdminEditRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Enable admin edit mode by generating a temporary token.
+    Requires evidence_file_id from prior upload.
+    Token valid for 30 minutes.
+    """
+    # Verify macro period exists
+    macro_period = db.query(MacroPeriod).filter(MacroPeriod.id == macro_period_id).first()
+    if not macro_period:
+        raise HTTPException(status_code=404, detail="Macro period not found")
+
+    # Validate status
+    if macro_period.status != MacroPeriodStatus.RESPONDIDO:
+        raise HTTPException(
+            status_code=400,
+            detail="Can only enable admin edit for periods in RESPONDIDO status"
+        )
+
+    # Verify evidence exists
+    evidence = db.query(AdminEditEvidence).filter(
+        AdminEditEvidence.id == request.evidence_file_id,
+        AdminEditEvidence.macro_period_id == macro_period_id
+    ).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+
+    # Generate temporary admin token (30 minutes validity)
+    admin_token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+
+    # Store token in audit event payload for validation later
+    audit_event = AuditEvent(
+        macro_period_id=macro_period_id,
+        event_type=EventType.UPDATED,
+        created_by=current_user["email"],
+        payload={
+            "action": "admin_edit_enabled",
+            "admin_token": admin_token,
+            "expires_at": expires_at.isoformat(),
+            "evidence_file_id": request.evidence_file_id,
+            "notes": request.notes
+        }
+    )
+    db.add(audit_event)
+    db.commit()
+
+    return EnableAdminEditResponse(
+        token=admin_token,
+        expires_at=expires_at
+    )
+
+
+@router.get("/{macro_period_id}/evidences", response_model=List[AdminEditEvidenceResponse])
+def list_admin_evidences(
+    macro_period_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    List all evidence files for a macro period
+    """
+    macro_period = db.query(MacroPeriod).filter(MacroPeriod.id == macro_period_id).first()
+    if not macro_period:
+        raise HTTPException(status_code=404, detail="Macro period not found")
+
+    evidences = db.query(AdminEditEvidence).filter(
+        AdminEditEvidence.macro_period_id == macro_period_id
+    ).order_by(desc(AdminEditEvidence.uploaded_at)).all()
+
+    return evidences

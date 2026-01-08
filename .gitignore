@@ -47,3 +47,7 @@ yarn-error.log*
 
 # Alembic
 alembic.ini.bak
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep

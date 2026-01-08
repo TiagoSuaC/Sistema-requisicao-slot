@@ -112,3 +112,52 @@ export const updateMacroPeriod = async (id: number, data: any) => {
   const response = await api.put(`/macro-periods/${id}`, data);
   return response.data;
 };
+
+// Admin Edit Evidence
+export const uploadAdminEvidence = async (macroPeriodId: number, file: File, notes?: string) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (notes) {
+    formData.append("notes", notes);
+  }
+  const response = await api.post(`/macro-periods/${macroPeriodId}/upload-admin-evidence`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return response.data;
+};
+
+export const enableAdminEdit = async (macroPeriodId: number, evidenceFileId: number, notes?: string) => {
+  const response = await api.post(`/macro-periods/${macroPeriodId}/enable-admin-edit`, {
+    evidence_file_id: evidenceFileId,
+    notes,
+  });
+  return response.data;
+};
+
+export const getAdminEvidences = async (macroPeriodId: number) => {
+  const response = await api.get(`/macro-periods/${macroPeriodId}/evidences`);
+  return response.data;
+};
+
+export const submitAdminEdit = async (
+  token: string,
+  adminToken: string,
+  selections: any[],
+  confirm: boolean = true
+) => {
+  const response = await api.post(
+    `/public/macro-period/${token}/response`,
+    {
+      selections,
+      confirm,
+    },
+    {
+      headers: {
+        "X-Admin-Edit-Token": adminToken,
+      },
+    }
+  );
+  return response.data;
+};
