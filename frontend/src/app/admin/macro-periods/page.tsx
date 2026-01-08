@@ -321,18 +321,11 @@ export default function MacroPeriodsPage() {
 
   const handleTabChange = (tab: "aguardando" | "revisar" | "concluido" | "inativos" | "todos") => {
     setActiveTab(tab);
+    // Abas fazem filtragem apenas no frontend (via filteredByTab)
+    // Não alterar filterStatus para não recarregar dados do backend
     if (tab === "aguardando") {
-      setFilterStatus("AGUARDANDO");
       setSortByDiasAberto(true);
-    } else if (tab === "revisar") {
-      setFilterStatus(""); // Vamos filtrar no frontend para múltiplos status
-    } else if (tab === "concluido") {
-      setFilterStatus(""); // Vamos filtrar no frontend
-    } else if (tab === "inativos") {
-      setFilterStatus("CANCELADO");
-      setSortByDiasAberto(false);
     } else {
-      setFilterStatus("");
       setSortByDiasAberto(false);
     }
   };
