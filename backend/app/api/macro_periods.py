@@ -589,23 +589,35 @@ def get_dashboard_metrics(
         MacroPeriod.created_at <= end_datetime
     ).group_by(Doctor.id).order_by(desc("tempo_medio")).limit(5).all()
 
-    # Tendência semanal (últimas 4 semanas)
-    tendencia_semanal = []
-    for i in range(4):
-        week_end = end_date - timedelta(days=i * 7)
-        week_start = week_end - timedelta(days=6)
-        week_start_dt = datetime.combine(week_start, datetime.min.time())
-        week_end_dt = datetime.combine(week_end, datetime.max.time())
+    # Tendência semanal (baseada nas datas reais de disponibilidade selecionadas pelos médicos)
+    # Buscar todas as seleções de disponibilidade no período filtrado
+    selections_query = db.query(MacroPeriodSelection).join(MacroPeriod).filter(
+        MacroPeriod.created_at >= start_datetime,
+        MacroPeriod.created_at <= end_datetime
+    ).all()
 
-        week_count = db.query(MacroPeriod).filter(
-            MacroPeriod.created_at >= week_start_dt,
-            MacroPeriod.created_at <= week_end_dt
-        ).count()
+    # Agrupar seleções por semana
+    from collections import defaultdict
+    weeks_data = defaultdict(int)
 
-        tendencia_semanal.insert(0, {
+    for selection in selections_query:
+        # Encontrar o início da semana (segunda-feira) da data de seleção
+        selection_date = selection.date
+        week_start = selection_date - timedelta(days=selection_date.weekday())
+        week_end = week_start + timedelta(days=6)
+        week_key = (week_start, week_end)
+        weeks_data[week_key] += 1
+
+    # Ordenar por data e limitar a 12 semanas
+    sorted_weeks = sorted(weeks_data.items(), key=lambda x: x[0][0])[:12]
+
+    tendencia_semanal = [
+        {
             "periodo": f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m')}",
-            "total": week_count
-        })
+            "total": count
+        }
+        for (week_start, week_end), count in sorted_weeks
+    ]
 
     # Análise por médico
     medicos_ativos = db.query(Doctor).filter(Doctor.active == True).all()
