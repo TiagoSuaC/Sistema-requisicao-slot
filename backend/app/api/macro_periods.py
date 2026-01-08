@@ -27,9 +27,10 @@ router = APIRouter(prefix="/macro-periods", tags=["macro-periods"])
 
 
 def calculate_dias_em_aberto(macro_period: MacroPeriod) -> Optional[int]:
-    """Calculate days open if status is AGUARDANDO"""
+    """Calculate total hours open if status is AGUARDANDO"""
     if macro_period.status == MacroPeriodStatus.AGUARDANDO:
-        return (datetime.now(timezone.utc) - macro_period.created_at).days
+        total_seconds = (datetime.now(timezone.utc) - macro_period.created_at).total_seconds()
+        return int(total_seconds / 3600)  # Retorna HORAS totais
     return None
 
 

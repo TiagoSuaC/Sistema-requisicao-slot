@@ -34,7 +34,7 @@ export default function AdminLayout({
       const periods = await getMacroPeriods({});
       const aguardando = periods.filter((p: any) => p.status === "AGUARDANDO").length;
       const urgentes = periods.filter(
-        (p: any) => p.status === "AGUARDANDO" && p.dias_em_aberto !== null && p.dias_em_aberto >= 3
+        (p: any) => p.status === "AGUARDANDO" && p.dias_em_aberto !== null && p.dias_em_aberto >= 72
       ).length;
       const revisar = periods.filter(
         (p: any) => p.status === "RESPONDIDO" || p.status === "EDICAO_LIBERADA"

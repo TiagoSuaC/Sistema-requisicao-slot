@@ -45,6 +45,17 @@ export default function MacroPeriodsPage() {
     return deadline.toISOString().split('T')[0]; // Formato YYYY-MM-DD
   };
 
+  // Função para formatar dias em aberto (horas para "Xh" ou "Xd+Yh")
+  const formatDiasEmAberto = (hours: number | null | undefined): string => {
+    if (hours === null || hours === undefined) return "-";
+    if (hours < 24) {
+      return `${hours}h`;
+    }
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return `${days}d+${remainingHours}h`;
+  };
+
   // Filters
   const [filterUnit, setFilterUnit] = useState("");
   const [filterDoctor, setFilterDoctor] = useState("");
@@ -340,7 +351,7 @@ export default function MacroPeriodsPage() {
   // Calcular contadores por tab
   const tabCounts = {
     aguardando: macroPeriods.filter(p => p.status === "AGUARDANDO").length,
-    aguardandoUrgente: macroPeriods.filter(p => p.status === "AGUARDANDO" && p.dias_em_aberto !== null && p.dias_em_aberto >= 3).length,
+    aguardandoUrgente: macroPeriods.filter(p => p.status === "AGUARDANDO" && p.dias_em_aberto !== null && p.dias_em_aberto >= 72).length,
     revisar: macroPeriods.filter(p => p.status === "RESPONDIDO" || p.status === "EDICAO_LIBERADA").length,
     concluido: macroPeriods.filter(p => p.status === "CONFIRMADO" || p.status === "EXPIRADO").length,
     inativos: macroPeriods.filter(p => p.status === "CANCELADO").length,
@@ -842,7 +853,7 @@ export default function MacroPeriodsPage() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedPeriods.map((period) => {
-              const isUrgent = period.dias_em_aberto !== null && period.dias_em_aberto !== undefined && period.dias_em_aberto >= 3;
+              const isUrgent = period.dias_em_aberto !== null && period.dias_em_aberto !== undefined && period.dias_em_aberto >= 72;
               return (
               <tr
                 key={period.id}
@@ -899,13 +910,13 @@ export default function MacroPeriodsPage() {
                   {period.dias_em_aberto !== null && period.dias_em_aberto !== undefined ? (
                     <span
                       className={
-                        period.dias_em_aberto >= 3
+                        period.dias_em_aberto >= 72
                           ? "text-red-600 font-semibold"
                           : "text-gray-900"
                       }
                     >
-                      {period.dias_em_aberto >= 3 && "🚨 "}
-                      {period.dias_em_aberto} dias
+                      {period.dias_em_aberto >= 72 && "🚨 "}
+                      {formatDiasEmAberto(period.dias_em_aberto)}
                     </span>
                   ) : period.tempo_ate_resposta !== null &&
                     period.tempo_ate_resposta !== undefined ? (
