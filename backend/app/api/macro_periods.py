@@ -368,6 +368,71 @@ def cancel_macro_period(
     return {"message": "Macro period cancelled"}
 
 
+@router.post("/batch-inactivate")
+def batch_inactivate_macro_periods(
+    macro_period_ids: List[int],
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Inativa (cancela) múltiplos macro períodos em lote.
+    Só permite inativar períodos com status AGUARDANDO.
+    """
+    if not macro_period_ids:
+        raise HTTPException(status_code=400, detail="No macro period IDs provided")
+
+    success = []
+    failed = []
+
+    for macro_period_id in macro_period_ids:
+        try:
+            macro_period = db.query(MacroPeriod).filter(MacroPeriod.id == macro_period_id).first()
+
+            if not macro_period:
+                failed.append({
+                    "id": macro_period_id,
+                    "reason": "Macro period not found"
+                })
+                continue
+
+            if macro_period.status != MacroPeriodStatus.AGUARDANDO:
+                failed.append({
+                    "id": macro_period_id,
+                    "reason": f"Cannot inactivate period with status {macro_period.status}"
+                })
+                continue
+
+            # Inativar período (mudar status para CANCELADO)
+            macro_period.status = MacroPeriodStatus.CANCELADO
+
+            # Criar audit event
+            audit_event = AuditEvent(
+                macro_period_id=macro_period.id,
+                event_type=EventType.CANCELLED,
+                created_by=current_user["email"],
+                payload={"action": "batch_inactivate"}
+            )
+            db.add(audit_event)
+
+            success.append(macro_period_id)
+
+        except Exception as e:
+            failed.append({
+                "id": macro_period_id,
+                "reason": str(e)
+            })
+
+    db.commit()
+
+    return {
+        "message": f"{len(success)} período(s) inativado(s) com sucesso",
+        "success": success,
+        "failed": failed,
+        "total_success": len(success),
+        "total_failed": len(failed)
+    }
+
+
 @router.get("/{macro_period_id}/export.csv")
 def export_macro_period_csv(
     macro_period_id: int,

@@ -87,6 +87,11 @@ export const exportBatchCSV = async (ids: number[]) => {
   return response.data;
 };
 
+export const inactivateBatchMacroPeriods = async (ids: number[]) => {
+  const response = await api.post("/macro-periods/batch-inactivate", ids);
+  return response.data;
+};
+
 // Public
 export const getMacroPeriodByToken = async (token: string) => {
   const response = await api.get(`/public/macro-period/${token}`);

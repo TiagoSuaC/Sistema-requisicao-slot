@@ -8,6 +8,7 @@ import {
   getUnits,
   getDoctors,
   exportBatchCSV,
+  inactivateBatchMacroPeriods,
 } from "@/lib/api";
 import type {
   MacroPeriodListItem,
@@ -44,7 +45,7 @@ export default function MacroPeriodsPage() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [quickMonth, setQuickMonth] = useState("");
   const [sortByDiasAberto, setSortByDiasAberto] = useState(false);
-  const [activeTab, setActiveTab] = useState<"aguardando" | "revisar" | "concluido" | "todos">("aguardando");
+  const [activeTab, setActiveTab] = useState<"aguardando" | "revisar" | "concluido" | "inativos" | "todos">("aguardando");
   const [selectedPeriods, setSelectedPeriods] = useState<number[]>([]);
 
   useEffect(() => {
@@ -280,7 +281,45 @@ export default function MacroPeriodsPage() {
     }
   };
 
-  const handleTabChange = (tab: "aguardando" | "revisar" | "concluido" | "todos") => {
+  const handleBatchInactivate = async () => {
+    if (selectedPeriods.length === 0) {
+      alert("Selecione pelo menos um período para inativar");
+      return;
+    }
+
+    // Verificar se todas as seleções são AGUARDANDO
+    const selectedItems = macroPeriods.filter(p => selectedPeriods.includes(p.id));
+    const nonAguardando = selectedItems.filter(p => p.status !== "AGUARDANDO");
+
+    if (nonAguardando.length > 0) {
+      alert(`Não é possível inativar período(s) com status diferente de AGUARDANDO.\n${nonAguardando.length} período(s) não pode(m) ser inativado(s).`);
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja inativar ${selectedPeriods.length} período(s)?\n\nEsta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      const result = await inactivateBatchMacroPeriods(selectedPeriods);
+
+      if (result.total_failed > 0) {
+        alert(
+          `${result.total_success} período(s) inativado(s) com sucesso.\n` +
+          `${result.total_failed} período(s) falharam.`
+        );
+      } else {
+        alert(`${result.total_success} período(s) inativado(s) com sucesso!`);
+      }
+
+      setSelectedPeriods([]);
+      loadData(); // Recarregar lista
+    } catch (error: any) {
+      alert("Erro ao inativar: " + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleTabChange = (tab: "aguardando" | "revisar" | "concluido" | "inativos" | "todos") => {
     setActiveTab(tab);
     if (tab === "aguardando") {
       setFilterStatus("AGUARDANDO");
@@ -289,6 +328,9 @@ export default function MacroPeriodsPage() {
       setFilterStatus(""); // Vamos filtrar no frontend para múltiplos status
     } else if (tab === "concluido") {
       setFilterStatus(""); // Vamos filtrar no frontend
+    } else if (tab === "inativos") {
+      setFilterStatus("CANCELADO");
+      setSortByDiasAberto(false);
     } else {
       setFilterStatus("");
       setSortByDiasAberto(false);
@@ -300,7 +342,8 @@ export default function MacroPeriodsPage() {
     aguardando: macroPeriods.filter(p => p.status === "AGUARDANDO").length,
     aguardandoUrgente: macroPeriods.filter(p => p.status === "AGUARDANDO" && p.dias_em_aberto !== null && p.dias_em_aberto >= 3).length,
     revisar: macroPeriods.filter(p => p.status === "RESPONDIDO" || p.status === "EDICAO_LIBERADA").length,
-    concluido: macroPeriods.filter(p => p.status === "CONFIRMADO" || p.status === "CANCELADO" || p.status === "EXPIRADO").length,
+    concluido: macroPeriods.filter(p => p.status === "CONFIRMADO" || p.status === "EXPIRADO").length,
+    inativos: macroPeriods.filter(p => p.status === "CANCELADO").length,
     todos: macroPeriods.length
   };
 
@@ -308,7 +351,8 @@ export default function MacroPeriodsPage() {
   const filteredByTab = macroPeriods.filter(period => {
     if (activeTab === "aguardando") return period.status === "AGUARDANDO";
     if (activeTab === "revisar") return period.status === "RESPONDIDO" || period.status === "EDICAO_LIBERADA";
-    if (activeTab === "concluido") return period.status === "CONFIRMADO" || period.status === "CANCELADO" || period.status === "EXPIRADO";
+    if (activeTab === "concluido") return period.status === "CONFIRMADO" || period.status === "EXPIRADO";
+    if (activeTab === "inativos") return period.status === "CANCELADO";
     return true; // todos
   });
 
@@ -552,6 +596,21 @@ export default function MacroPeriodsPage() {
               </span>
             </button>
             <button
+              onClick={() => handleTabChange("inativos")}
+              className={`flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm ${
+                activeTab === "inativos"
+                  ? "border-red-500 text-red-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              🚫 Inativos
+              <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${
+                activeTab === "inativos" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"
+              }`}>
+                {tabCounts.inativos}
+              </span>
+            </button>
+            <button
               onClick={() => handleTabChange("todos")}
               className={`flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm ${
                 activeTab === "todos"
@@ -706,6 +765,12 @@ export default function MacroPeriodsPage() {
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               📥 Exportar Selecionados
+            </button>
+            <button
+              onClick={handleBatchInactivate}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              🚫 Inativar Selecionados ({selectedPeriods.length})
             </button>
             <button
               onClick={() => setSelectedPeriods([])}
